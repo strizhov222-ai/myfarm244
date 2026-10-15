@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Пчелиная Ферма</title>
+    <!-- Подключаем Telegram Web Apps SDK для работы внутри TG -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #61b329;
+            --wood-dark: #633d1c;
+            --wood-light: #b07c4d;
+            --honey-yellow: #ffb700;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Верхняя панель статистики */
+        .stats-panel {
+            background: var(--wood-dark);
+            border: 4px solid #422812;
+            border-radius: 15px;
+            padding: 15px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 6px 0 #2b190b;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--wood-light);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border: 2px solid #fff;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-value {
+            color: #fff;
+            font-size: 1.1rem;
+        }
+        
+        .honey-count {
+            color: #fff2a3;
+        }
+
+        /* Игровое поле (Пасека) */
+        .grid-container {
+            background: var(--wood-dark);
+            border: 5px solid #422812;
+            border-radius: 20px;
+            padding: 15px;
+            width: 100%;
+            max-width: 360px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            box-shadow: 0 8px 0 #2b190b;
+            box-sizing: border-box;
+            margin-bottom: 25px;
+        }
+
+        .cell {
+            background: #472c15;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            border: 2px solid #2b190b;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            transition: background 0.2s;
+        }
+
+        .cell.occupied {
+            background: var(--wood-light);
+            border: 2px solid #fff;
+        }
+
+        .bee-emoji {
+            font-size: 2rem;
+            animation: float 2s ease-in-out infinite alternate;
+        }
+
+        .bee-lvl {
+            position: absolute;
+            bottom: 3px;
+            background: var(--honey-yellow);
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 1px 5px;
+            border-radius: 5px;
+            border: 1px solid #fff;
+        }
+
+        /* Кнопка покупки */
+        .shop-panel {
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .buy-btn {
+            background: #4caf50;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            border-bottom: 5px solid #2e7d32;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.1s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .buy-btn:active {
+            transform: translateY(3px);
+            border-bottom-width: 2px;
+        }
+
+        .buy-btn:disabled {
+            background: #888;
+            border-bottom-color: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-4px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Панель баланса -->
+    <div class="stats-panel">
+        <div class="stat-row">
+            <span>🍯 Всего меда:</span>
+            <span class="stat-value honey-count" id="honey-display">0.0000</span>
+        </div>
+        <div class="stat-row">
+            <span>⚡ Скорость добычи:</span>
+            <span class="stat-value" id="speed-display">0.0000 /сек</span>
+        </div>
+        <div class="stat-row">
+            <span>💵 Монеты (для покупки):</span>
+            <span class="stat-value" id="coins-display">150</span>
+        </div>
+    </div>
+
+    <!-- Сетка пасеки (16 ячеек) -->
+    <div class="grid-container" id="grid">
+        <!-- Ячейки сгенерируются через JavaScript -->
+    </div>
+
+    <!-- Кнопка магазина -->
+    <div class="shop-panel">
+        <button class="buy-btn" id="buy-button" onclick="buyBee()">
+            Купить пчелу 1 LVL (Цена: <span id="price-display">100</span> 💵)
+        </button>
+    </div>
+
+    <script>
+        // Инициализация Telegram WebApp API
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand(); // Расширяем приложение на весь экран телефона
+        }
+
+        // Состояние игры (базовые настройки)
+        let gameState = {
+            honey: 0.0,
+            coins: 150,
+            beePrice: 100,
+            // Массив из 16 элементов, 0 - пусто, цифра - уровень пчелы
+            grid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        };
+
+        // Базовая доходность пчел в секунду в зависимости от уровня
+        const beeIncome = {
+            1: 0.01,
+            2: 0.03,
+            3: 0.09
+        };
+
+        // Отрисовка игрового поля
+        function renderGrid() {
+            const gridContainer = document.getElementById('grid');
+            gridContainer.innerHTML = '';
+
+            gameState.grid.forEach((cell, index) => {
+                const cellElement = document.createElement('div');
+                cellElement.className = 'cell';
+                
+                if (cell > 0) {
+                    cellElement.classList.add('occupied');
+                    cellElement.innerHTML = `
+                        <div class="bee-emoji">🐝</div>
+                        <div class="bee-lvl">${cell} LVL</div>
+                    `;
+                    
+                    // Добавляем механику слияния (клик по пчеле повышает её уровень, если есть место)
+                    cellElement.onclick = () => upgradeBee(index);
+                } else {
+                    cellElement.onclick = () => console.log(`Ячейка ${index} пуста`);
+                }
+                
+                gridContainer.appendChild(cellElement);
+            });
+
+            // Обновление интерфейса текстов
+            document.getElementById('coins-display').innerText = gameState.coins;
+            document.getElementById('price-display').innerText = gameState.beePrice;
+            document.getElementById('speed-display').innerText = (calculateSpeed() * 3600).toFixed(2) + " /час";
+            
+            // Проверка доступности кнопки покупки
+            document.getElementById('buy-button').disabled = gameState.coins < gameState.beePrice;
+        }
+
+        // Подсчет общей скорости генерации меда в секунду
+        function calculateSpeed() {
+            let totalSpeed = 0;
+            gameState.grid.forEach(beeLvl => {
+                if (beeLvl > 0) {
+                    totalSpeed += beeIncome[beeLvl] || 0;
+                }
+            });
+            return totalSpeed;
+        }
+
+        // Покупка новой пчелы
+        function buyBee() {
+            if (gameState.coins >= gameState.beePrice) {
+                // Ищем первую пустую ячейку
+                const emptyIndex = gameState.grid.indexOf(0);
+                
+                if (emptyIndex !== -1) {
+                    gameState.coins -= gameState.beePrice;
+                    gameState.grid[emptyIndex] = 1; // Ставим пчелу 1 уровня
+                    gameState.beePrice = Math.floor(gameState.beePrice * 1.2); // Увеличиваем цену следующей
+                    renderGrid();
+                } else {
+                    alert("Нет свободных ячеек на пасеке!");
+                }
+            }
+        }
+
+        // Упрощенная механика улучшения: клик по пчеле улучшает её за монеты (для теста)
+        function upgradeBee(index) {
+            const currentLvl = gameState.grid[index];
+            if (currentLvl < 3 && gameState.coins >= 50) {
+                gameState.coins -= 50;
+                gameState.grid[index] += 1;
+                renderGrid();
+            }
+        }
+
+        // Игровой цикл: начисление меда каждую секунду
+        setInterval(() => {
+            const speed = calculateSpeed();
+            gameState.honey += speed;
+            document.getElementById('honey-display').innerText = gameState.honey.toFixed(4);
+            
+            // Бонус: раз в 5 секунд капает немного монет для теста покупки
+            if (Math.random() > 0.7) {
+                gameState.coins += 5;
+                renderGrid();
+            }
+        }, 1000);
+
+        // Первый запуск отрисовки при загрузке страницы
+        renderGrid();
+    </script>
+</body>
+</html>
